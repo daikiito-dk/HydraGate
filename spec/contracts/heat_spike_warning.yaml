@@ -1,0 +1,11 @@
+name: heat_spike_warning
+description: >-
+  A thermal excursion (IT heat spike) must raise a ThermalWarning while
+  the safety interlock stays calm - only leaks trigger isolation.
+steps:
+  - action: {chaos: heat, args: {kw: 320}}
+    expect:
+      within_s: 25
+      interlock_state: NORMAL
+      events_contain: [ThermalWarning]
+      events_absent: [LeakDetected, IsolationComplete, UnsafeClosureDetected]

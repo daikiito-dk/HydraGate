@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# HydraGate safety-interlock contract (executable via tests/test_contracts.py)
+# The bridge implements this machine; the contract tests enforce it.
+# ---------------------------------------------------------------------------
+
+fsm:
+  states: [NORMAL, RESPONDING, STAGED_ISOLATION, ISOLATED, COMMS_LOST, FAULT]
+  initial: NORMAL
+  transitions:
+    - { from: NORMAL,           to: RESPONDING,        trigger: leak_detected }
+    - { from: RESPONDING,       to: STAGED_ISOLATION,  trigger: first_stage_written }
+    - { from: STAGED_ISOLATION, to: ISOLATED,          trigger: valve_closed_and_pump_stopped }
+    - { from: "*",             to: COMMS_LOST,        trigger: comm_lost }
+    - { from: COMMS_LOST,       to: FAULT,             trigger: isolation_incomplete }
+    - { from: COMMS_LOST,       to: "*",              trigger: comm_restored }
+
+timing:
+  detection_to_response_ms_max: 250   # leak bit observed -> first corrective Modbus write
+  first_event_latency_ms_max: 500     # leak trigger -> LeakDetected SSE event observed
+  isolation_complete_s_max: 30        # detection -> ISOLATED
+
+water_hammer:
+  # Joukowsky surge:  dP = rho * c * dv   (evaluated over the settle window)
+  rho_kg_m3: 1030
+  c_m_s: 1350
+  pipe_inner_diameter_mm: 50.0
+  max_surge_pressure_pa: 5.0e5
+  evaluation:
+    window_ms: 600
+    source: telemetry_history     # 10 Hz polled flow history via the diagnostics API
+
+isolation_end_state:
+  valve_position_actual_max_pct: 5
+  pump_speed_actual_max_pct: 10

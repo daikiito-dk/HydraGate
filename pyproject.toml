@@ -1,0 +1,35 @@
+[project]
+name = "hydragate"
+version = "0.1.0"
+description = "Vendor-neutral liquid-cooling telemetry & safety gateway: Modbus -> Redfish"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "HydraGate contributors" }]
+dependencies = [
+    "pymodbus>=3.8,<3.12",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "prometheus-client>=0.20",
+    "PyYAML>=6.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+hydragate-sim = "hydragate.cli:sim_main"
+hydragate-bridge = "hydragate.cli:bridge_main"
+hydragate-chaos = "hydragate.cli:chaos_main"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-timeout>=2.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hydragate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 180

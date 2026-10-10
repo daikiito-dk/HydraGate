@@ -1,0 +1,53 @@
+# HydraGate bridge configuration
+# ------------------------------------------------------------------
+# NOTE: topology below is a static stand-in for the future NetBox
+# sync worker (CoolingSource -> CoolingFeed -> CoolingIntake/Outflow).
+# ------------------------------------------------------------------
+
+modbus:
+  host: 127.0.0.1
+  port: 15020
+  unit_id: 1
+  poll_interval_ms: 100
+  stale_after_failures: 5
+
+http:
+  host: 0.0.0.0
+  port: 8080
+
+topology:
+  manager_id: hydragate-01
+  cdus:
+    - id: cdu-01
+      model: "VirtualCDU 250"
+      serial: "VC250-PROTO-001"
+      loops:
+        - id: loop-secondary-tcs-01
+          kind: SecondaryTCS    # technology cooling system (IT side)
+        - id: loop-primary-fws-01
+          kind: PrimaryFWS      # facility water system
+      leak_detectors:
+        - { id: leak-a, zone: "Rack row A", coil: 0 }
+        - { id: leak-b, zone: "Rack row B", coil: 1 }
+        - { id: leak-c, zone: "Rack row C", coil: 2 }
+        - { id: leak-d, zone: "Rack row D", coil: 3 }
+
+safety:
+  # Joukowsky water-hammer constraint:  dP = rho * c * dv
+  coolant:
+    density_kg_m3: 1030.0      # propylene-glycol 25% solution
+    wave_speed_m_s: 1350.0     # pressure wave speed in the hybrid loop
+  pipe:
+    inner_diameter_mm: 50.0    # 2" DN50 secondary loop main
+  max_surge_pressure_pa: 5.0e5 # 5 bar allowable surge above steady state
+  control:
+    pump_cut_pct: 30               # immediate pump reduction on leak detection
+    pump_cap_pct: 70               # shutdown pump setpoint never exceeds this
+    valve_step_settle_ms: 600      # flow settle window between valve stages
+    min_valve_step_pct: 5.0
+    isolation_timeout_s: 30
+
+thresholds:
+  secondary_return_temp_warning_c: 45.0
+  delta_t_warning_k: 15.0
+  min_flow_lpm_warning: 20.0

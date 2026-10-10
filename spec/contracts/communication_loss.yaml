@@ -1,0 +1,18 @@
+name: communication_loss
+description: >-
+  A sensor-bus blackout must raise CommunicationLost, mark telemetry
+  stale and park the interlock in COMMS_LOST; clearing the fault must
+  restore the stream without triggering a shutdown.
+steps:
+  - action: {chaos: blackout}
+    expect:
+      within_s: 6
+      interlock_state: COMMS_LOST
+      events_contain: [CommunicationLost]
+      telemetry_stale: true
+  - action: {chaos: blackout, args: {clear: true}}
+    expect:
+      within_s: 6
+      interlock_state: NORMAL
+      events_contain: [CommunicationRestored]
+      events_absent: [LeakDetected, IsolationComplete, InterlockFault]

@@ -1,0 +1,18 @@
+name: leak_isolation
+description: >-
+  A tripped leak detector must produce a millisecond-class response
+  (SSE event + first corrective Modbus write) followed by a staged,
+  water-hammer-safe shutdown that ends fully isolated.
+steps:
+  - action: {chaos: leak, args: {zone: b}}
+    expect:
+      within_s: 30
+      sse:
+        - {message_id: LeakDetected, within_ms: 500}
+      action_latency:
+        - {action: pump_cut, after_message_id: LeakDetected, within_ms: 250}
+      interlock_state: ISOLATED
+      events_contain: [LeakDetected, IsolationComplete, MaintenanceRecommended]
+      events_absent: [UnsafeClosureDetected]
+      end_state: {valve_pct_max: 5.0, pump_pct_max: 10.0}
+      hammer: {tolerance: 1.05}   # max measured Joukowsky surge <= 5 bar * 1.05

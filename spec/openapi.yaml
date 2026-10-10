@@ -1,0 +1,360 @@
+# ---------------------------------------------------------------------------
+# HydraGate API specification (OpenAPI 3.1)
+#
+# Redfish-inspired resource model for liquid-cooling telemetry and safety
+# interlock. NOTE: this is a prototype interface modeled on DMTF Redfish
+# (CoolingUnit / CoolingLoop / LeakDetector), not a certified Redfish
+# service. Schema names follow Redfish conventions to keep a future
+# DSP0158-conformant implementation a rename, not a redesign.
+# ---------------------------------------------------------------------------
+openapi: 3.1.0
+info:
+  title: HydraGate
+  version: 0.1.0
+  description: >-
+    Vendor-neutral liquid-cooling telemetry & safety gateway.
+    Bridges industrial CDU protocols (Modbus TCP today) to a
+    Redfish-style REST API with Server-Sent Events, Prometheus metrics,
+    and a water-hammer-aware safe-shutdown interlock.
+  license:
+    name: Apache-2.0
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: redfish
+  - name: diagnostics
+  - name: ops
+
+paths:
+  /:
+    get:
+      tags: [ops]
+      summary: Redirect to the service root
+      responses:
+        "307": { description: redirect }
+  /healthz:
+    get:
+      tags: [ops]
+      summary: Liveness + freshness probe
+      responses:
+        "200":
+          description: gateway status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /metrics:
+    get:
+      tags: [ops]
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: metrics in text exposition format
+          content:
+            text/plain: { schema: { type: string } }
+
+  /redfish/v1/:
+    get:
+      tags: [redfish]
+      summary: Redfish service root
+      responses:
+        "200":
+          description: service root
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServiceRoot" }
+
+  /redfish/v1/CoolingUnits:
+    get:
+      tags: [redfish]
+      summary: CoolingUnit (CDU) collection
+      responses:
+        "200":
+          description: collection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoolingUnitCollection" }
+  /redfish/v1/CoolingUnits/{cduId}:
+    get:
+      tags: [redfish]
+      summary: CoolingUnit (CDU) with live telemetry
+      parameters:
+        - { name: cduId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: cooling unit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoolingUnit" }
+        "404": { description: unknown CDU }
+
+  /redfish/v1/CoolingLoops:
+    get:
+      tags: [redfish]
+      summary: CoolingLoop collection
+      responses:
+        "200": { description: collection }
+  /redfish/v1/CoolingLoops/{loopId}:
+    get:
+      tags: [redfish]
+      summary: CoolingLoop detail
+      parameters:
+        - { name: loopId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: loop detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoolingLoop" }
+        "404": { description: unknown loop }
+
+  /redfish/v1/LeakDetectors:
+    get:
+      tags: [redfish]
+      summary: LeakDetector collection
+      responses:
+        "200": { description: collection }
+  /redfish/v1/LeakDetectors/{detectorId}:
+    get:
+      tags: [redfish]
+      summary: LeakDetector state (dry / leak)
+      parameters:
+        - { name: detectorId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: detector state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeakDetector" }
+        "404": { description: unknown detector }
+
+  /redfish/v1/Managers:
+    get:
+      tags: [redfish]
+      summary: Manager collection
+      responses:
+        "200": { description: collection }
+  /redfish/v1/Managers/{managerId}:
+    get:
+      tags: [redfish]
+      summary: The gateway itself (identity, firmware, interlock state)
+      parameters:
+        - { name: managerId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: manager }
+        "404": { description: unknown manager }
+
+  /redfish/v1/EventService:
+    get:
+      tags: [redfish]
+      summary: Event service description
+      responses:
+        "200": { description: event service }
+  /redfish/v1/EventService/SSE:
+    get:
+      tags: [redfish]
+      summary: Server-Sent Events stream
+      description: >-
+        Streams alarms as SSE events (LeakDetected, StateChange,
+        IsolationComplete, UnsafeClosureDetected, CommunicationLost, ...)
+        plus a MetricReport telemetry heartbeat once per second.
+      responses:
+        "200":
+          description: event stream
+          content:
+            text/event-stream: { schema: { type: string } }
+
+  /internal/history:
+    get:
+      tags: [diagnostics]
+      summary: Recent telemetry samples (10 Hz ring buffer)
+      parameters:
+        - { name: seconds, in: query, schema: { type: number, default: 10 } }
+      responses:
+        "200":
+          description: samples
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TelemetryHistory" }
+  /internal/fsm:
+    get:
+      tags: [diagnostics]
+      summary: Safety interlock state, action log and hammer parameters
+      responses:
+        "200":
+          description: FSM diagnostics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FsmDiagnostics" }
+  /internal/events:
+    get:
+      tags: [diagnostics]
+      summary: Recent events (audit trail)
+      parameters:
+        - { name: n, in: query, schema: { type: integer, default: 100 } }
+      responses:
+        "200":
+          description: events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+
+components:
+  schemas:
+    Status:
+      type: object
+      properties:
+        State: { type: string, example: Enabled }
+        Health: { type: string, enum: [OK, Warning, Critical] }
+    ServiceRoot:
+      type: object
+      properties:
+        "@odata.id": { type: string }
+        "@odata.type": { type: string }
+        Id: { type: string, example: RootService }
+        RedfishVersion: { type: string }
+        Version: { type: string }
+        Links:
+          type: object
+          properties:
+            CoolingUnits: { type: array, items: { type: object } }
+            CoolingLoops: { type: array, items: { type: object } }
+            LeakDetectors: { type: array, items: { type: object } }
+            Managers: { type: array, items: { type: object } }
+            EventService: { type: object }
+    CoolingUnitCollection:
+      type: object
+      properties:
+        Members: { type: array, items: { type: object } }
+        Members@odata.count: { type: integer }
+    CoolingUnit:
+      type: object
+      properties:
+        "@odata.id": { type: string }
+        "@odata.type": { type: string, example: "#CoolingUnit.v1_0_0.CoolingUnit" }
+        Id: { type: string, example: cdu-01 }
+        Model: { type: string }
+        SerialNumber: { type: string }
+        Status: { $ref: "#/components/schemas/Status" }
+        OperatingMode:
+          type: string
+          enum: [Normal, SafeShutdown, Isolated, Unavailable, Fault]
+        InterlockState:
+          type: string
+          enum: [NORMAL, RESPONDING, STAGED_ISOLATION, ISOLATED, COMMS_LOST, FAULT]
+        TelemetryStale: { type: boolean }
+        HeatLoadKW: { type: number }
+        SecondaryLoop:
+          type: object
+          properties:
+            SupplyTemperatureC: { type: number }
+            ReturnTemperatureC: { type: number }
+            DeltaTK: { type: number }
+            FlowRateLPM: { type: number }
+            DifferentialPressureMbar: { type: number }
+            PumpSpeedPct: { type: number }
+            PumpSpeedSetpointPct: { type: number }
+            ValvePositionPct: { type: number }
+            ValvePositionSetpointPct: { type: number }
+        PrimaryLoop:
+          type: object
+          properties:
+            SupplyTemperatureC: { type: number }
+            ReturnTemperatureC: { type: number }
+        LeakDetectors: { type: array, items: { type: object } }
+    CoolingLoop:
+      type: object
+      properties:
+        "@odata.id": { type: string }
+        Id: { type: string }
+        LoopType: { type: string, enum: [SecondaryTCS, PrimaryFWS] }
+        Status: { $ref: "#/components/schemas/Status" }
+        SupplyTemperatureC: { type: number }
+        ReturnTemperatureC: { type: number }
+        FlowRateLPM: { type: number }
+    LeakDetector:
+      type: object
+      properties:
+        "@odata.id": { type: string }
+        "@odata.type": { type: string, example: "#LeakDetector.v1_0_0.LeakDetector" }
+        Id: { type: string, example: leak-a }
+        Name: { type: string }
+        Location: { type: string }
+        LeakDetected: { type: boolean }
+        Status: { $ref: "#/components/schemas/Status" }
+    Event:
+      type: object
+      properties:
+        sequence: { type: integer }
+        timestamp: { type: string, format: date-time }
+        timestamp_ms: { type: integer }
+        messageId:
+          type: string
+          enum: [LeakDetected, StateChange, InterlockAction, IsolationComplete,
+                 MaintenanceRecommended, UnsafeClosureDetected, CommunicationLost,
+                 CommunicationRestored, ThermalWarning, FlowWarning, InterlockFault]
+        severity: { type: string, enum: [OK, Warning, Critical] }
+        originOfCondition: { type: string }
+        message: { type: string }
+        data: { type: object }
+    TelemetrySample:
+      type: object
+      properties:
+        ts_ms: { type: integer }
+        timestamp: { type: string }
+        secondary_supply_temp_c: { type: number }
+        secondary_return_temp_c: { type: number }
+        primary_supply_temp_c: { type: number }
+        primary_return_temp_c: { type: number }
+        secondary_flow_lpm: { type: number }
+        secondary_dp_mbar: { type: number }
+        pump_setpoint_pct: { type: number }
+        pump_actual_pct: { type: number }
+        valve_setpoint_pct: { type: number }
+        valve_actual_pct: { type: number }
+        heat_load_kw: { type: number }
+        delta_t_k: { type: number }
+        alarm_word: { type: integer }
+        status_word: { type: integer }
+        leak_zones: { type: array, items: { type: boolean } }
+    TelemetryHistory:
+      type: object
+      properties:
+        samples: { type: array, items: { $ref: "#/components/schemas/TelemetrySample" } }
+    FsmAction:
+      type: object
+      properties:
+        ts_ms: { type: integer }
+        action: { type: string, enum: [pump_cut, valve_stage, pump_stop] }
+        detail: { type: string }
+        predicted_delta_flow_lpm: { type: [number, "null"] }
+        measured_delta_flow_lpm: { type: [number, "null"] }
+    FsmDiagnostics:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [NORMAL, RESPONDING, STAGED_ISOLATION, ISOLATED, COMMS_LOST, FAULT]
+        entered_ms: { type: integer }
+        in_state_s: { type: number }
+        leak_detected_ms: { type: [integer, "null"] }
+        actions: { type: array, items: { $ref: "#/components/schemas/FsmAction" } }
+        hammer:
+          type: object
+          properties:
+            rho_kg_m3: { type: number }
+            wave_speed_m_s: { type: number }
+            pipe_inner_diameter_mm: { type: number }
+            max_surge_pressure_pa: { type: number }
+            window_ms: { type: integer }
+            max_flow_step_lpm: { type: number }
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        interlock: { type: string }
+        telemetry_age_s: { type: [number, "null"] }

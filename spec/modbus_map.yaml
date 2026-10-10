@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# HydraGate Modbus map - single source of truth for the virtual CDU interface.
+# Both the simulator (pymodbus server) and the bridge (client) load this file,
+# so the wire contract can never drift between the two sides.
+# ---------------------------------------------------------------------------
+
+device:
+  id: cdu-01
+  model: VirtualCDU 250
+  unit_id: 1
+
+polling:
+  default_interval_ms: 100
+
+# ---- Holding registers (FC3 read / FC6 write where rw: true) ----
+holding_registers:
+  - { addr: 0,  name: secondary_supply_temp_c,      type: i16, scale: 0.1, unit: degC,   role: sensor,   desc: TCS supply temperature to IT racks }
+  - { addr: 1,  name: secondary_return_temp_c,      type: i16, scale: 0.1, unit: degC,   role: sensor,   desc: TCS return temperature from IT racks }
+  - { addr: 2,  name: primary_supply_temp_c,        type: i16, scale: 0.1, unit: degC,   role: sensor,   desc: FWS facility supply temperature }
+  - { addr: 3,  name: primary_return_temp_c,         type: i16, scale: 0.1, unit: degC,   role: sensor,   desc: FWS facility return temperature }
+  - { addr: 4,  name: secondary_flow_lpm,            type: u16, scale: 0.1, unit: L/min,  role: sensor,   desc: secondary loop volumetric flow }
+  - { addr: 5,  name: secondary_dp_mbar,            type: u16, scale: 1,   unit: mbar,   role: sensor,   desc: secondary differential pressure }
+  - { addr: 6,  name: pump_speed_setpoint_pct,      type: u16, scale: 1,   unit: pct,    role: control,  rw: true, desc: pump VFD speed command }
+  - { addr: 7,  name: pump_speed_actual_pct,        type: u16, scale: 1,   unit: pct,    role: sensor,   desc: pump VFD speed feedback }
+  - { addr: 8,  name: valve_position_setpoint_pct,  type: u16, scale: 1,   unit: pct,    role: control,  rw: true, desc: secondary isolation valve command }
+  - { addr: 9,  name: valve_position_actual_pct,    type: u16, scale: 1,   unit: pct,    role: sensor,   desc: valve position feedback }
+  - { addr: 10, name: it_heat_load_kw,              type: u16, scale: 0.1, unit: kW,    role: fault_injection, rw: true, desc: simulated IT heat load }
+  - { addr: 11, name: alarm_word,                   type: u16, scale: 1,   unit: bitmask, role: sensor,  desc: active alarm bits }
+  - { addr: 12, name: status_word,                  type: u16, scale: 1,   unit: bitmask, role: sensor,  desc: operating status bits }
+  - { addr: 13, name: slam_valve_command,           type: u16, scale: 1,   unit: bool,   role: fault_injection, rw: true, desc: "1 => instant valve slam (negative control for water-hammer demo)" }
+
+holding_count: 14
+
+# ---- Coils (FC1 read / FC5 write) : leak detector zones + fault injection ----
+coils:
+  - { addr: 0, name: leak_zone_a, role: fault_injection, rw: true, desc: "leak rope sensor, rack row A" }
+  - { addr: 1, name: leak_zone_b, role: fault_injection, rw: true, desc: "leak rope sensor, rack row B" }
+  - { addr: 2, name: leak_zone_c, role: fault_injection, rw: true, desc: "leak rope sensor, rack row C" }
+  - { addr: 3, name: leak_zone_d, role: fault_injection, rw: true, desc: "leak rope sensor, rack row D" }
+  - { addr: 4, name: comm_blackout, role: fault_injection, rw: true, desc: "1 => sensor bus blackout (reads fail, writes still land)" }
+
+coil_count: 5
+
+alarm_bits:
+  0: leak_detected
+  1: pump_fault
+  2: valve_fault
+  3: low_flow
+  4: high_return_temp
+  5: sensor_stale
+
+status_bits:
+  0: pump_running
+  1: valve_open
+  2: leak_interlock_active
+  3: comm_ok

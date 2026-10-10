@@ -1,0 +1,13 @@
+name: naive_slam_negative_control
+description: >-
+  Negative control: an instant valve slam (the shutdown pattern this
+  product exists to prevent) violates the Joukowsky envelope and must
+  be flagged by the runtime hammer guard even though the interlock
+  itself never initiated it.
+steps:
+  - action: {chaos: slam}
+    expect:
+      within_s: 8
+      interlock_state: NORMAL
+      events_contain: [UnsafeClosureDetected]
+      events_absent: [LeakDetected, IsolationComplete]

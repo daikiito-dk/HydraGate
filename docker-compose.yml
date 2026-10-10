@@ -1,0 +1,35 @@
+# Local liquid-cooling stack: virtual CDU + protocol bridge.
+#   docker compose up --build
+#   curl localhost:8080/redfish/v1/
+#   docker compose run --rm chaos leak --zone b --port sim:15020
+services:
+  sim:
+    build: .
+    command: ["python", "-m", "hydragate", "sim", "--host", "0.0.0.0", "--port", "15020"]
+    ports:
+      - "15020:15020"
+
+  bridge:
+    build: .
+    command:
+      - python
+      - -m
+      - hydragate
+      - bridge
+      - --modbus-host
+      - sim
+      - --modbus-port
+      - "15020"
+      - --http-port
+      - "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sim
+
+  chaos:
+    build: .
+    entrypoint: ["python", "-m", "hydragate", "chaos", "--port", "15020"]
+    profiles: ["tools"]
+    depends_on:
+      - sim
